@@ -13,6 +13,7 @@
 #include "esp_netif.h"
 #include "lwip/sockets.h"
 #include "errno.h"
+#include "esp_timer.h"
 
 #define WIFI_SSID "mqtt1"
 #define WIFI_PASSWORD "bo21122112"
@@ -46,6 +47,11 @@ void AdvancedSettings(NRF24_t * dev)
 {
     ESP_LOGW(pcTaskGetName(0), "Set RF Data Ratio to 1MBps");
     Nrf24_SetSpeedDataRates(dev, 0);
+}
+
+// Add this function to get the current time in milliseconds
+int64_t get_time_in_ms() {
+    return esp_timer_get_time() / 1000;
 }
 
 void receiver(void *pvParameters)
@@ -85,7 +91,6 @@ void receiver(void *pvParameters)
     }
 }
 
-
 void wifi_init() {
     ESP_LOGI(TAG, "Initializing TCP/IP adapter...");
     esp_netif_init();
@@ -118,8 +123,6 @@ void wifi_init() {
     ESP_LOGI(TAG, "WiFi started, connecting...");
 }
 
-
-
 void send_data_to_server(uint8_t *data) {
     int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
     if (sock < 0) {
@@ -139,12 +142,17 @@ void send_data_to_server(uint8_t *data) {
         return;
     }
 
-    err = send(sock, data, strlen((char *)data), 0);
+    int64_t time_in_ms = get_time_in_ms();
+    char* data_with_time = (char*) malloc(strlen((char*)data) + 20); // 20 for time and null terminator
+    sprintf(data_with_time, "%lld %s", time_in_ms, data);
+
+    err = send(sock, data_with_time, strlen(data_with_time), 0);
     if (err < 0) {
         ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
     }
 
     close(sock);
+    free(data_with_time);
 }
 
 void app_main(void) {

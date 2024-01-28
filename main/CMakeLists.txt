@@ -6,4 +6,5 @@ idf_component_register(SRCS "test1.c"
                        REQUIRES nvs_flash
                        REQUIRES esp_netif
                        REQUIRES esp_wifi
-                       REQUIRES esp_event)
+                       REQUIRES esp_event
+                       REQUIRES esp_timer)
