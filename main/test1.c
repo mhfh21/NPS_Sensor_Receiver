@@ -18,11 +18,13 @@
 #define WIFI_PASSWORD "bo21122112"
 #define SERVER_IP "85.198.15.205"
 #define SERVER_PORT 3333
-#define TAG "test1"
+#define TAG "Receiver"
 #define WIFI_CONNECTED_BIT BIT0
+#define BUFFER_SIZE 50  // Define buffer size for data collection
 
 static EventGroupHandle_t wifi_event_group;
 
+// Function to send received data to a server
 void send_data_to_server(uint8_t *data);
 
 static void event_handler(void* arg, esp_event_base_t event_base, 
@@ -37,7 +39,10 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         esp_wifi_connect();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "Got IP address: %s", ip4addr_ntoa(&event->ip_info.ip));
+        // Convert IP address from esp_ip4_addr_t to ip4_addr_t
+        ip4_addr_t ip4_addr;
+        ip4_addr.addr = event->ip_info.ip.addr;
+        ESP_LOGI(TAG, "Got IP address: %s", ip4addr_ntoa(&ip4_addr));
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
@@ -45,23 +50,18 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 void AdvancedSettings(NRF24_t * dev)
 {
     ESP_LOGW(pcTaskGetName(0), "Set RF Data Ratio to 1MBps");
-    Nrf24_SetSpeedDataRates(dev, 0);
+    Nrf24_SetSpeedDataRates(dev, RF24_1MBPS);
 }
 
 void receiver(void *pvParameters)
 {
-    ESP_LOGI(pcTaskGetName(0), "Start");
+    ESP_LOGI(pcTaskGetName(0), "Start Receiver");
     NRF24_t dev;
     Nrf24_init(&dev);
     uint8_t payload = 32;
-    uint8_t channel = 90;
-    Nrf24_config(&dev, channel, payload);
-
-    esp_err_t ret = Nrf24_setRADDR(&dev, (uint8_t *)"FGHIJ");
-    if (ret != ESP_OK) {
-        ESP_LOGE(pcTaskGetName(0), "nrf24l01 not installed");
-        while(1) { vTaskDelay(1); }
-    }
+    uint8_t channels[] = {90, 91};  // Channels for each transmitter
+    uint8_t addresses[][6] = {"FGHIJ", "KLMNO"};  // Addresses for each transmitter
+    int current_channel = 0;
 
     AdvancedSettings(&dev);
 
@@ -69,22 +69,30 @@ void receiver(void *pvParameters)
     ESP_LOGI(pcTaskGetName(0), "Listening...");
 
     uint8_t buf[32];
-
     while(1) {
-        if (Nrf24_dataReady(&dev) == false) break;
-        Nrf24_getData(&dev, buf);
-    }
+        // Configure NRF24L01 for the current channel and address
+        Nrf24_config(&dev, channels[current_channel], payload);
+        Nrf24_setRADDR(&dev, addresses[current_channel]);
+        ESP_LOGI(pcTaskGetName(0), "Switched to channel %d", channels[current_channel]);
 
-    while(1) {
-        if (Nrf24_dataReady(&dev)) {
-            Nrf24_getData(&dev, buf);
-            ESP_LOGI(pcTaskGetName(0), "Got data:%s", buf);
-            send_data_to_server(buf);
+        // Listen for data on the current channel
+        for (int i = 0; i < BUFFER_SIZE; ++i) {
+            if (Nrf24_dataReady(&dev)) {
+                Nrf24_getData(&dev, buf);
+                ESP_LOGI(pcTaskGetName(0), "Got data on channel %d: %s", channels[current_channel], buf);
+                
+                // Display received data
+                printf("Data from channel %d: %s\n", channels[current_channel], buf);
+                
+                send_data_to_server(buf);
+            }
+            vTaskDelay(20 / portTICK_PERIOD_MS);  // Short delay to match data collection rate
         }
-        vTaskDelay(1);
+
+        // Switch to the next channel
+        current_channel = (current_channel + 1) % 2;
     }
 }
-
 
 void wifi_init() {
     ESP_LOGI(TAG, "Initializing TCP/IP adapter...");
@@ -117,8 +125,6 @@ void wifi_init() {
 
     ESP_LOGI(TAG, "WiFi started, connecting...");
 }
-
-
 
 void send_data_to_server(uint8_t *data) {
     int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
@@ -159,5 +165,5 @@ void app_main(void) {
     wifi_init();
 
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, false, true, portMAX_DELAY);
-    xTaskCreate(&receiver, "RECEIVER", 1024*3, NULL, 2, NULL);
+    xTaskCreate(&receiver, "RECEIVER", 1024 * 3, NULL, 2, NULL);
 }
