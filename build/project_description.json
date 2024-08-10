@@ -1,7 +1,7 @@
 {
     "version":            "1",
     "project_name":       "test1",
-    "project_version":    "078d9ae-dirty",
+    "project_version":    "1455db3-dirty",
     "project_path":       "C:/Users/moham/Documents/GitHub/NPS_Sensor_Receiver",
     "idf_path":           "C:/Espressif/frameworks/esp-idf-v5.1.2",
     "build_dir":          "C:/Users/moham/Documents/GitHub/NPS_Sensor_Receiver/build",
